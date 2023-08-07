@@ -1,0 +1,10 @@
+{
+  "name": "cocos-live-background",
+  "uuid": "c5c9a98f-d8f6-4d25-a448-18df8a873986",
+  "creator": {
+    "version": "3.7.3"
+  },
+  "dependencies": {
+    "mpegts.js": "^1.7.3"
+  }
+}
