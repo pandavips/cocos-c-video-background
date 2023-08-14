@@ -1,8 +1,9 @@
-import { _decorator, assetManager, Canvas, CCBoolean, CCInteger, CCString, Component, error, ImageAsset, Node, Sprite, SpriteFrame, Texture2D, view, Widget } from 'cc';
+import { _decorator, assetManager, Canvas, CCBoolean, CCInteger, CCString, Component, error, ImageAsset, LODGroup, Node, Sprite, SpriteFrame, Texture2D, view, Widget } from 'cc';
 import mpegts from 'mpegts.js';
-const { ccclass, property } = _decorator;
+const { ccclass, requireComponent, property, } = _decorator;
 
 @ccclass('Video')
+@requireComponent([Widget, Sprite])
 export class Video extends Component {
     // 视频宽高
     @property({
@@ -47,9 +48,30 @@ export class Video extends Component {
     // 初始化完毕标志
     _inited = false;
 
+    // 交互标志
+    isInteractive = false;
+
+    start() {
+        this.init();
+    }
+    update() {
+        this._inited && this.draw();
+        if (this.canvasRef && this.ctxRef) {
+            !this._img && (this._img = new ImageAsset(this.canvasRef));
+            !this._texture && (this._texture = new Texture2D());
+            !this._sprite && (this._sprite = new Sprite());
+            !this._spriteFrame && (this._spriteFrame = new SpriteFrame());
+            // 一定要进行释放,因为cocos引擎会帮你进行缓存,如果不及时释放,会导致内存泄漏
+            assetManager.releaseAsset(this._texture);
+            this._texture = new Texture2D()
+            this._img._nativeAsset = this.canvasRef
+            this._texture.image = this._img;
+            this._spriteFrame.texture = this._texture;
+            this._sprite.spriteFrame = this._spriteFrame
+        }
+    }
     createPlayer() {
         this.videoRef = document.createElement("video");
-
         // this.videoRef.style.width = '100%';
         // this.videoRef.style.height = '100%';
         this.videoRef.style.width = this._fit_width + "px";
@@ -87,12 +109,6 @@ export class Video extends Component {
                 },
             }
         }
-
-        try {
-            // this.player.play();
-        } catch (err) {
-            console.log(err);
-        }
     }
     createCanvas() {
         this.canvasRef = document.createElement("canvas");
@@ -108,8 +124,17 @@ export class Video extends Component {
         this._fit_width = this.width;
         this._fit_height = this.height;
     }
-    initEnv() {
-        !this.node.getComponent(Widget) && this.node.addComponent(Widget);
+    // 初始化环境变量信息
+    initEnvironmentalInformation() {
+        // firefox不支持
+        this.isInteractive = navigator.userActivation?.isActive || false;
+
+        // 检测视频地址
+        this.videoUrl = this.videoUrl.trim();
+        if (!this.videoUrl) {
+            throw new Error('请传入视频地址')
+        }
+
         this._widget = this.node.getComponent(Widget);
         this._widget.alignMode = Widget.AlignMode.ON_WINDOW_RESIZE;
         this._widget.isAlignLeft = true;
@@ -121,7 +146,6 @@ export class Video extends Component {
         this._widget.top = 0;
         this._widget.bottom = 0;
 
-        this.node.addComponent(Sprite);
         this._sprite = this.node.getComponent(Sprite);
         this._sprite.name = 'video_sprite'
         this._sprite.sizeMode = Sprite.SizeMode.TRIMMED;
@@ -130,76 +154,36 @@ export class Video extends Component {
         this._texture = new Texture2D();
         this._spriteFrame = new SpriteFrame();
 
-        // 似乎不需要
-        // this.calcCanvasSize();
+        // 直接创建画布以及播放器实例
         this.createCanvas();
-        // 修复空格
-        this.videoUrl = this.videoUrl.trim();
-        if (!this.videoUrl) {
-            throw new Error('请传入视频地址')
-        }
-
         this.createPlayer();
     }
-    bindEvents() {
+    bindAutoPlay() {
         // 绑定点击事件,只要用户有操作就进行播放
         this.node.once(Node.EventType.TOUCH_START, () => {
             this.player && this.player.play();
         })
     }
-    start() {
+    init(): void {
         try {
-            this.initEnv();
-            this.bindEvents();
+            this.initEnvironmentalInformation();
+            if (this.isInteractive && this.videoRef.paused) {
+                this.player.play();
+            }
+            else {
+                this.bindAutoPlay();
+            }
             this._inited = true
         } catch (err) {
-            this.drawError(err);
+            console.error(err);
             this._inited = false
         }
     }
-    // 在画布上提示错误信息
-    drawError(err) {
-        const anchorX = 300;  // 指定锚点的 X 坐标
-        const anchorY = 300;  // 指定锚点的 Y 坐标
-        this.draw(() => {
-            this.ctxRef.font = "60px Arial";
-            this.ctxRef.fillStyle = "red";
-            this.ctxRef.textAlign = "center";
-            this.ctxRef.textBaseline = "middle";
-            // 错误信息裁切
-            // const text = (() => {
-            //     const block_s = []
-            //     const len = 10
-            //     let i = 0
-            //     const s = String(err)
-            //     while ((i += len) < s.length) {
-            //         block_s.push(s.slice(i, i + len))
-            //     }
-            //     return block_s.join('\n\r')
-            // })()
-            this.ctxRef.fillText(err, anchorX, anchorY);
-        })
-    }
     draw(fn?: () => void) {
-        this.ctxRef.clearRect(0, 0, this._fit_width, this._fit_height);
-        fn ? fn() : this.ctxRef.drawImage(this.videoRef, 0, 0, this._fit_width, this._fit_height);
-    }
-    update() {
-        this._inited && this.draw();
-
-        !this._img && (this._img = new ImageAsset(this.canvasRef));
-        !this._texture && (this._texture = new Texture2D());
-        !this._sprite && (this._sprite = new Sprite());
-        !this._spriteFrame && (this._spriteFrame = new SpriteFrame());
-
-        // 一定要进行释放,因为cocos引擎会帮你进行缓存,如果不及时释放,会导致内存泄漏
-        assetManager.releaseAsset(this._texture);
-        this._texture = new Texture2D()
-        // this._texture = null
-        this._img._nativeAsset = this.canvasRef
-        this._texture.image = this._img;
-        this._spriteFrame.texture = this._texture;
-        this._sprite.spriteFrame = this._spriteFrame
+        if (this.ctxRef) {
+            this.ctxRef.clearRect(0, 0, this._fit_width, this._fit_height);
+            fn ? fn() : this.ctxRef.drawImage(this.videoRef, 0, 0, this._fit_width, this._fit_height)
+        }
     }
 }
 
